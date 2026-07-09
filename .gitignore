@@ -11,11 +11,11 @@ venv
 **/__pycache__
 
 # Ignore rulesets so I don't accidently upload something I don't want to
-Rules/*
+# Rules/*
 
 # Don't ignore the default ruleset
-!Rules/Default
-!Rules/Russian
+# !Rules/Default
+# !Rules/Russian
 
 # Don't include the build files for documents
 docs/build/*
