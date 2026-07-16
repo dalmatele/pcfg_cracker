@@ -47,6 +47,10 @@ class CrackingSession:
 
         # The actual Priority queue. Will be defined when run() is called
         self.pqueue = None
+        self.should_exit = False
+        # Auto save counters
+        self.save_interval = 50000
+        self.guesses_since_save = 0
 
     def run(self, load_session = False, limit = None):
         """
@@ -81,7 +85,7 @@ class CrackingSession:
 
         ## Set up the check to see if a user is pressing a button
         #
-        user_thread = threading.Thread(target=keypress, args=(self.report, self.pcfg))
+        user_thread = threading.Thread(target=keypress, args=(self.report, self.pcfg, self))
         user_thread.daemon = True  # thread dies when main thread (only non-daemon thread) exits.
         user_thread.start()
 
@@ -113,6 +117,7 @@ class CrackingSession:
             if pt_item is None:
                 print ("Done processing the PCFG. No more guesses to generate",file=sys.stderr)
                 print ("Shutting down guessing session",file=sys.stderr)
+                self._save_session()
                 return
 
             # Check to see if the program should exit based on user input
@@ -128,7 +133,8 @@ class CrackingSession:
             #          but shouldn't have a noticable impact when people restarts
             #          sessions.
             #
-            if not user_thread.is_alive():
+            # if not user_thread.is_alive():
+            if self.should_exit:
                 print("Saving Session Info",file=sys.stderr)
                 self._save_session()
                 print("Exiting...",file=sys.stderr)
@@ -142,6 +148,10 @@ class CrackingSession:
             try:
                 num_generated_guesses = self.pcfg.create_guesses(pt_item['pt'], limit = limit)
                 self.report.num_guesses += num_generated_guesses
+                self.guesses_since_save += num_generated_guesses
+                if self.guesses_since_save >= self.save_interval:
+                    self._save_session()
+                    self.guesses_since_save = 0
 
                 # Check if a limit was defined
                 if limit:
@@ -195,57 +205,21 @@ class CrackingSession:
         return True
 
 
-def keypress(report, pcfg):
+def keypress(report, pcfg, session):
     """
-    Used to check to see if a key was pressed to output program status
-    *Hopefully* should work on multiple OSs
-
-    --Simply check user_input_char to see if it is not none
+    Handle keypress events for interactive control
     """
+    import sys
+    
+    # Disable keypress monitoring when running non-interactively
+    if not sys.stdin.isatty():
+        return
+    
     while True:
-        user_input = input()
-
-        # If the main thread died before this is killed off it will throw
-        # an error, so check to make sure it is alive before printing items
-        # to stderr. Otherwise exit.
-        #
-        # Adding the time.sleep option because otherwise it'll start trying
-        # to print and then error out after the below call. It's a hack, I'll
-        # admit it. Probably shouldn't use daemon threads, but Python makes
-        # checking for interuptable input a pain from stdin.
-        #
-        time.sleep(0.1)
-        if not threading.main_thread().is_alive():
-            return
-
         try:
-            # Display the status report
-            report.print_status(pcfg)
-
-            # If the program should exit
+            user_input = input()
             if user_input == 'q':
-                print( "",file=sys.stderr)
-                print ("Exit command received",file=sys.stderr)
-                print ("Will exit after finishing processing current pre-terminal",file=sys.stderr)
-                print ("Note: If this takes too long, you can also use CTRL-C",file=sys.stderr)
-                print ("      but if you exit early and later restart the session ",file=sys.stderr)
-                print ("      it will begin with the previous pre-terminal",file=sys.stderr)
-                print ("",file=sys.stderr)
-                pcfg.should_exit = True
+                session.should_exit = True
                 return
-
-            # Print the help screen
-            elif user_input == 'h':
-                print( "",file=sys.stderr)
-                report.print_help()
-
-            print( "",file=sys.stderr)
-            print("Press [ENTER] to display an updated status output",file=sys.stderr)
-            print("Press 'h' [ENTER] for help on what the status reports mean",file=sys.stderr)
-            print("Press 'q' [ENTER] to exit",file=sys.stderr)
-            print( "",file=sys.stderr)
-
-        # If we can't print to stderr, that implies something weird is happening
-        # so exit the user input thread.
         except:
-            return
+            break

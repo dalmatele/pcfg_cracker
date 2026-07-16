@@ -27,3 +27,4 @@ docs/build/latex/*
 *.sav
 *.omn
 *.bak
+hash.txt
